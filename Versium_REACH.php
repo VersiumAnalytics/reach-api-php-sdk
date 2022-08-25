@@ -12,7 +12,7 @@ class VersiumREACH {
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
      * @param  string $apiKey
      * @param  string $dataTool
-     * the current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
+     * the current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain, hemtobusinessdomain
      * @return array
      */
     public static function append(array $inputData, array $outputTypes = [], string $apiKey, string $dataTool) {
