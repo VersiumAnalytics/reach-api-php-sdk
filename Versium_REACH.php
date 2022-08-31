@@ -29,7 +29,7 @@ class VersiumREACH
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
      * @return array
      */
-    public function append(string $dataTool, array $inputData, array $outputTypes = [])
+    public function append($dataTool, $inputData, $outputTypes = [])
     {
         $retryUrls = [];
         $failedRequests = 0;
@@ -155,7 +155,7 @@ class VersiumREACH
         return $recs;
     }
 
-    private function buildRequests(array $urls, &$multiHandle, array &$requests)
+    private function buildRequests($urls, &$multiHandle, &$requests)
     {
         $requestLength = count($requests) == 0 ? count($requests) : count($requests) - count($urls); //prevents writing over original requests
         foreach ($urls as $i => $url) {

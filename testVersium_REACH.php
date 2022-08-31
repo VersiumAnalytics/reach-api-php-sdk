@@ -10,5 +10,4 @@ $outputTypes = ["address", "phone"];
 $dataTool = "contact";
 
 $Versium_REACH = new VersiumREACH($apiKey, 5, 10, true);
-
 $responses = $Versium_REACH->append($dataTool, $inputData, $outputTypes);
