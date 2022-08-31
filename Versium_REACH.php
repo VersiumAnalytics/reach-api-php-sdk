@@ -39,53 +39,81 @@ class VersiumREACH
         $urls = [];
         $baseURL = "https://api.versium.com/v2/$dataTool?";
         
-        foreach ($outputTypes as $outputType) {
-            $baseURL .= "output[]=$outputType&";
-        }
-        $counter = 0;
-        foreach ($inputData as $row) {
-            $urls[$counter] = $baseURL . http_build_query($row);
-            if ($this->verbose) {
-                if (isset($urls[$counter])) {
-                    echo "urls[$counter]: " . $urls[$counter] . "\n";
-                } else {
-                    echo "urls[$counter] is not defined\n";
-                }
-            }
-            $counter++;
-        }
-
-        if (count($inputData) < 1) {
+        if (empty($inputData)) {
             if ($this->verbose) {
                 echo "No input data was given\n";
             }
             return [];
         }
 
+        foreach ($outputTypes as $outputType) {
+            $baseURL .= "output[]=$outputType&";
+        }
+        $counter = 0;
+        foreach ($inputData as $row) {
+            $urls[$counter] = $baseURL . http_build_query($row);
+            $counter++;
+        }
+
+
+
         $this->buildRequests($urls, $multiHandle, $requests);
-    
-        //send off all initial requests
+
+        //OPTION 1
+        $firstAttemptComplete = false;
+        $hasAddedRetryHandles = false;
+        $retryUrlCount = 0;
+        $urlCount = count($urls);
         do {
             $status = curl_multi_exec($multiHandle, $active);
-            while (false !== ($info = curl_multi_info_read($multiHandle))) {
-                if (curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500) {
+            while (!$firstAttemptComplete && (false !== ($info = curl_multi_info_read($multiHandle)))) {
+                $urlCount--;
+                if ((curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500)) {
                     array_push($retryUrls, curl_getinfo($info['handle'], CURLINFO_EFFECTIVE_URL));
-
+                    $retryUrlCount++;
                 }
             }
-            usleep(10000);
-        } while ($active > 0 && $status == CURLM_OK);
-        $numRetriedUrls = count($retryUrls);
-
-        //retry requests that failed the first time after wait time is complete
-        if ($numRetriedUrls > 0) {
-            usleep($this->waitTime);
-            $this->buildRequests($retryUrls, $multiHandle, $requests);
-            do {
+            if (!$firstAttemptComplete && $urlCount == 0) {
+                echo("firstAttemptComplete set to true" . "\n");
+                $firstAttemptComplete = true;
+            }
+            if ($firstAttemptComplete && !$hasAddedRetryHandles) {
+                echo('REBUILDS REQUESTS' . "\n");
+                $this->buildRequests($retryUrls, $multiHandle, $requests);
+                usleep($this->waitTime);
+                $hasAddedRetryHandles = true;
                 $status = curl_multi_exec($multiHandle, $active);
-                usleep(10000);
-            } while ($active > 0 && $status == CURLM_OK);
-        }
+            }
+            usleep(10000);
+            echo("urlCount: " . $urlCount . "\n");
+
+        } while ($active > 0 && $status == CURLM_OK);
+        $numRetriedUrls = $retryUrlCount;
+        
+    
+        //OPTION 2
+        //send off all initial requests
+        //$numRetriedUrls = count($retryUrls);
+        // do {
+        //     $status = curl_multi_exec($multiHandle, $active);
+        //     while (false !== ($info = curl_multi_info_read($multiHandle))) {
+        //         if (curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500) {
+        //             array_push($retryUrls, curl_getinfo($info['handle'], CURLINFO_EFFECTIVE_URL));
+        //         }
+        //     }
+        //     usleep(10000);
+        // } while ($active > 0 && $status == CURLM_OK);
+        // $numRetriedUrls = count($retryUrls);
+
+        // //retry requests that failed the first time after wait time is complete
+        // if ($numRetriedUrls > 0) {
+        //     usleep($this->waitTime);
+        //     $this->buildRequests($retryUrls, $multiHandle, $requests);
+        //     do {
+        //         $status = curl_multi_exec($multiHandle, $active);
+        //         usleep(10000);
+        //     } while ($active > 0 && $status == CURLM_OK);
+        // }
 
         //now put all the response data in $recs, close all requests, and return $recs
         $emptyResponses = 0;
@@ -121,7 +149,7 @@ class VersiumREACH
             print_r("Number of records submitted to the append function: " . count($urls) . "\n");
             print_r("Number of requests that failed on initial attempt due to 429 or 500 error code: " . $numRetriedUrls . "\n");
             print_r("Number of requests that were successfully retried: " . ($numRetriedUrls - $failedRequests) . "\n");
-            print_r("Number of requests that failed (on both initial and retry attempt): ". $failedRequests . "\n");
+            print_r("Number of requests that failed (on both initial and retry attempt): " . $failedRequests . "\n");
             print_r("Number of response records returned: " . count($recs) . "\n");
         }
         return $recs;
