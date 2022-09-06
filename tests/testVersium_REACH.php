@@ -11,7 +11,7 @@ class testVersium_REACH {
     public function runTests() {
         $inputData = array_fill(0, 40, ["first" => "Angela", "last" => "Adams", "email" => "adamsangela@hotmail.com"]);
         //$inputData[0] = ["first" => "Angela", "last" => "Adams", "email" => "adamsangela@hotmail.com"];
-        $apiKey = "73d2092e-ab93-433f-9450-578ba8136281";
+        $apiKey = "";
         $outputTypes = ["address", "phone"];
         $dataTool = "contact";
     
@@ -22,5 +22,3 @@ class testVersium_REACH {
 
 $test = new testVersium_REACH();
 $test->runTests();
-
-
