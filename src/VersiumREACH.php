@@ -151,7 +151,11 @@ class VersiumREACH
             print_r("Number of requests that failed on initial attempt due to 429 or 500 error code: " . $numRetriedUrls . "\n");
             print_r("Number of requests that were successfully retried: " . ($numRetriedUrls - $failedRequests) . "\n");
             print_r("Number of requests that failed (on both initial and retry attempt): " . $failedRequests . "\n");
-            print_r("Number of response records returned: " . count($recs) . "\n");
+            if ($recs) {
+                print_r("Number of response records returned: " . count($recs) . "\n");
+            } else {
+                print_r("Number of response records returned: 0");
+            }
         }
         return $recs;
     }

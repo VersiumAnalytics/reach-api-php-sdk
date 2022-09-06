@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../vendor/autoload.php';
 use VersiumREACH\VersiumREACH;
 /* THIS FILE IS JUST FOR TESTING - MAKE SURE TO DELETE ONCE SDK IS COMPLETE */
 
@@ -10,7 +11,7 @@ class testVersium_REACH {
     public function runTests() {
         $inputData = array_fill(0, 40, ["first" => "Angela", "last" => "Adams", "email" => "adamsangela@hotmail.com"]);
         //$inputData[0] = ["first" => "Angela", "last" => "Adams", "email" => "adamsangela@hotmail.com"];
-        $apiKey = "";
+        $apiKey = "73d2092e-ab93-433f-9450-578ba8136281";
         $outputTypes = ["address", "phone"];
         $dataTool = "contact";
     
