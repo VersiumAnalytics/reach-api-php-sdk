@@ -69,24 +69,21 @@ class VersiumREACH
             $status = curl_multi_exec($multiHandle, $active);
             while (!$firstAttemptComplete && (false !== ($info = curl_multi_info_read($multiHandle)))) {
                 $urlCount--;
-                if ((curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500)) {
+                if (curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500) {
                     array_push($retryUrls, curl_getinfo($info['handle'], CURLINFO_EFFECTIVE_URL));
                     $retryUrlCount++;
                 }
             }
             if (!$firstAttemptComplete && $urlCount == 0) {
-                echo("firstAttemptComplete set to true" . "\n");
                 $firstAttemptComplete = true;
             }
             if ($firstAttemptComplete && !$hasAddedRetryHandles) {
-                echo('REBUILDS REQUESTS' . "\n");
                 $this->buildRequests($retryUrls, $multiHandle, $requests);
                 usleep($this->waitTime);
                 $hasAddedRetryHandles = true;
                 $status = curl_multi_exec($multiHandle, $active);
             }
             usleep(10000);
-            echo("urlCount: " . $urlCount . "\n");
 
         } while ($active > 0 && $status == CURLM_OK);
         $numRetriedUrls = $retryUrlCount;
