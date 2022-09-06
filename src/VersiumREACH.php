@@ -1,11 +1,12 @@
 <?php
+namespace VersiumREACH;
 class VersiumREACH
 {
-    private string $apiKey;
-    public int $CURLOPT_CONNECTTIMEOUT;
-    public int $CURLOPT_TIMEOUT;
-    public bool $verbose;
-    public int $waitTime; //microseconds
+    private $apiKey;
+    public $CURLOPT_CONNECTTIMEOUT;
+    public $CURLOPT_TIMEOUT;
+    public $verbose;
+    public $waitTime; //microseconds
 
     function __construct(string $apiKey, int $CURLOPT_CONNECTTIMEOUT = 5, int $CURLOPT_TIMEOUT = 10, bool $verbose = false, int $waitTime = 2000000)
     {
@@ -29,7 +30,7 @@ class VersiumREACH
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
      * @return array
      */
-    public function append($dataTool, $inputData, $outputTypes = [])
+    public function append(string $dataTool, array $inputData, array $outputTypes = [])
     {
         $retryUrls = [];
         $failedRequests = 0;
@@ -155,7 +156,7 @@ class VersiumREACH
         return $recs;
     }
 
-    private function buildRequests($urls, &$multiHandle, &$requests)
+    private function buildRequests(array $urls, &$multiHandle, array &$requests)
     {
         $requestLength = count($requests) == 0 ? count($requests) : count($requests) - count($urls); //prevents writing over original requests
         foreach ($urls as $i => $url) {
