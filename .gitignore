@@ -1,3 +1,48 @@
-vendor/*
-composer.lock
+/vendor
+/.idea
+/.vagrant
+/.vscode
+/.env*
+.DS_Store
+**/.DS_Store
+
+docker/dev-app.env
+
+######################
+# Visual Studio
+######################
+
+# User files
+*.user
+*.phppub
+*.phppub.user
+*.phpproj
+*.phpproj.user
+*.sln
+*.vs
+web.config
+
+######################
+# PHP Unit
+######################
+
+# Temp files
+.tmppica
+phpunit.xml.tmppica
 .phpunit.result.cache
+
+######################
+# codeception
+######################
+tests/Integration/tests/_output/*
+tests/Integration/tests/_support/_generated/*
+
+######################
+# PhpStorm
+######################
+tests/integration/.idea/*
+
+######################
+# PhpFixer
+######################
+.php_cs.cache
