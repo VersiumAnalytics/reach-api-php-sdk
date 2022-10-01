@@ -1,21 +1,131 @@
 <?php
 namespace VersiumREACH;
+
+
 class VersiumREACH
 {
     private $apiKey;
-    public $CURLOPT_CONNECTTIMEOUT;
-    public $CURLOPT_TIMEOUT;
+    private $logger;
+    public $maxRetries = 3;
+    public $CURLOPT_CONNECTTIMEOUT = 5;
+    public $CURLOPT_TIMEOUT = 10;
+    public $maxBatchRequestTime = 20;
     public $verbose;
-    public $waitTime; //microseconds
+    public $waitTime = 2000000; //microseconds
 
-    function __construct(string $apiKey, int $CURLOPT_CONNECTTIMEOUT = 5, int $CURLOPT_TIMEOUT = 10, bool $verbose = false, int $waitTime = 2000000)
+    public function __construct(string $apiKey, bool $verbose = false)
     {
         $this->apiKey = $apiKey;
-        $this->CURLOPT_CONNECTTIMEOUT = $CURLOPT_CONNECTTIMEOUT;
-        $this->CURLOPT_TIMEOUT = $CURLOPT_TIMEOUT;
         $this->verbose = $verbose;
-        $this->waitTime = $waitTime;
     }
+
+    //region Setters
+    /**
+     * @param callable $loggingFunction
+     * @return void
+     */
+    public function setLogger(callable $loggingFunction) {
+        $this->logger = $loggingFunction;
+    }
+    //endregion
+
+    //region Private helper functions
+    /**
+     * @param string $msg
+     * @return void
+     */
+    private function log(string $msg) {
+        if ($this->verbose) {
+            ($this->logger)($msg);
+        }
+    }
+
+    /**
+     * @param array $results
+     * @param array $requests
+     * @param int $retries
+     * @return void
+     */
+    private function handleRequests(array &$results, array &$requests, int $retries): void
+    {
+        $results = array_replace($results, $this->sendRequests($requests));
+
+        foreach ($results as $i => $result) {
+            if (!in_array($result['httpStatus'], [429, 500, 0])) {
+                unset($requests[$i]);
+            }
+        }
+
+        if (count($requests) > 0 && $retries < $this->maxRetries) {
+            $retries++;
+            $this->log('Retry attempt: ' . $retries);
+            $this->log('Retry requests count: ' . count($requests));
+            $this->log('Sleeping for ' . $this->waitTime);
+            usleep($this->waitTime);
+            $this->log('Sleeping done. Starting retries.');
+            $this->handleRequests($results, $requests, $retries);
+        }
+    }
+
+
+    /**
+     * @param array $requests
+     * @return array
+     */
+    private function sendRequests(array $requests): array
+    {
+        $multiHandle = curl_multi_init();
+        $results = [];
+        $active = 0;
+        $channels = [];
+
+        foreach ($requests as $i => list('url' => $url, 'headers' => $headers)) {
+            $channels[$i] = curl_init();
+
+            if (!empty($headers)) {
+                curl_setopt($channels[$i], CURLOPT_HTTPHEADER, $headers);
+            }
+
+            curl_setopt($channels[$i], CURLOPT_URL, $url);
+            curl_setopt($channels[$i], CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($channels[$i], CURLOPT_CONNECTTIMEOUT, $this->CURLOPT_CONNECTTIMEOUT);
+            curl_setopt($channels[$i], CURLOPT_TIMEOUT, $this->CURLOPT_TIMEOUT);
+            curl_setopt($channels[$i], CURLOPT_HEADER, true);
+            curl_setopt($channels[$i], CURLOPT_FAILONERROR, true);
+
+            curl_multi_add_handle($multiHandle, $channels[$i]);
+        }
+
+        $time1 = microtime(true);
+
+        do {
+            $time2 = microtime(true);
+            curl_multi_exec($multiHandle, $active);
+            usleep(10000);
+        } while ($active > 0 && ($time2 - $time1) < $this->maxBatchRequestTime);
+
+        foreach ($requests as $i => $request) {
+            $headerSize = curl_getinfo($channels[$i], CURLINFO_HEADER_SIZE);
+            $errorNum = curl_errno($channels[$i]);
+            $httpStatus = curl_getinfo($channels[$i], CURLINFO_HTTP_CODE);
+            $data = curl_multi_getcontent($channels[$i]);
+            $responseHeader = substr($data, 0, $headerSize);
+            $response = substr($data, $headerSize);
+            curl_multi_remove_handle($multiHandle, $channels[$i]);
+            curl_close($channels[$i]);
+
+            $results[$i] = [
+                "errorNum" => $errorNum,
+                "bodyRaw" => $response,
+                "body" => json_decode($response),
+                "httpStatus" => $httpStatus,
+                "headers" => $responseHeader
+            ];
+        }
+
+        return $results;
+    }
+    //endregion
 
     /**
      * This function should be used to effectively query Versium REACH APIs. See our API Documentation for more information
@@ -30,152 +140,35 @@ class VersiumREACH
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
      * @return array
      */
-    public function append(string $dataTool, array $inputData, array $outputTypes = [])
+    public function append(string $dataTool, array $inputData, array $outputTypes = []): array
     {
-        $retryUrls = [];
-        $failedRequests = 0;
         $requests = [];
-        $active = 0;
-        $multiHandle = curl_multi_init();
-        $urls = [];
-        $baseURL = "https://api.versium.com/v2/$dataTool?";
+        $results = [];
+        $baseURL = "https://api.versium.com/v2/" . urlencode($dataTool) . "?";
         
         if (empty($inputData)) {
-            if ($this->verbose) {
-                echo "No input data was given\n";
-            }
+            $this->log("No input data was given.");
             return [];
         }
 
         foreach ($outputTypes as $outputType) {
-            $baseURL .= "output[]=$outputType&";
+            $baseURL .= "output[]=" . urlencode($outputType) . "&";
         }
-        $counter = 0;
         foreach ($inputData as $row) {
-            $urls[$counter] = $baseURL . http_build_query($row);
-            $counter++;
+            $requests[] = [
+                'url' => $baseURL . http_build_query($row),
+                'headers' => [
+                    "Accept: application/json",
+                    "x-versium-api-key: " . $this->apiKey,
+                ]
+            ];
         }
 
+        $this->log("Created the following requests: " . json_encode($requests));
+        $this->handleRequests($results, $requests, 0);
+        $this->log("Final results: " . json_encode($results));
+        $this->log("Failed requests: " . json_encode($requests));
 
-
-        $this->buildRequests($urls, $multiHandle, $requests);
-
-        //OPTION 1
-        $firstAttemptComplete = false;
-        $hasAddedRetryHandles = false;
-        $retryUrlCount = 0;
-        $urlCount = count($urls);
-        do {
-            $status = curl_multi_exec($multiHandle, $active);
-            while (!$firstAttemptComplete && (false !== ($info = curl_multi_info_read($multiHandle)))) {
-                $urlCount--;
-                if (curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500) {
-                    array_push($retryUrls, curl_getinfo($info['handle'], CURLINFO_EFFECTIVE_URL));
-                    $retryUrlCount++;
-                }
-            }
-            if (!$firstAttemptComplete && $urlCount == 0) {
-                $firstAttemptComplete = true;
-            }
-            if ($firstAttemptComplete && !$hasAddedRetryHandles) {
-                $this->buildRequests($retryUrls, $multiHandle, $requests);
-                usleep($this->waitTime);
-                $hasAddedRetryHandles = true;
-                $status = curl_multi_exec($multiHandle, $active);
-            }
-            usleep(10000);
-
-        } while ($active > 0 && $status == CURLM_OK);
-        $numRetriedUrls = $retryUrlCount;
-        
-    
-        //OPTION 2
-        //send off all initial requests
-        //$numRetriedUrls = count($retryUrls);
-        // do {
-        //     $status = curl_multi_exec($multiHandle, $active);
-        //     while (false !== ($info = curl_multi_info_read($multiHandle))) {
-        //         if (curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 429 || curl_getinfo($info['handle'], CURLINFO_HTTP_CODE) == 500) {
-        //             array_push($retryUrls, curl_getinfo($info['handle'], CURLINFO_EFFECTIVE_URL));
-        //         }
-        //     }
-        //     usleep(10000);
-        // } while ($active > 0 && $status == CURLM_OK);
-        // $numRetriedUrls = count($retryUrls);
-
-        // //retry requests that failed the first time after wait time is complete
-        // if ($numRetriedUrls > 0) {
-        //     usleep($this->waitTime);
-        //     $this->buildRequests($retryUrls, $multiHandle, $requests);
-        //     do {
-        //         $status = curl_multi_exec($multiHandle, $active);
-        //         usleep(10000);
-        //     } while ($active > 0 && $status == CURLM_OK);
-        // }
-
-        //now put all the response data in $recs, close all requests, and return $recs
-        $emptyResponses = 0;
-        for ($i = 0; $i < count($requests) - $emptyResponses; $i++) {
-            $errorNum = curl_errno($requests[$i]);
-            $httpStatus = curl_getinfo($requests[$i], CURLINFO_HTTP_CODE);
-            $data = curl_multi_getcontent($requests[$i]);
-            $headerSize = curl_getinfo($requests[$i], CURLINFO_HEADER_SIZE);
-            $responseHeader = substr($data, 0, $headerSize);
-            $response = substr($data, $headerSize);
-            curl_multi_remove_handle($multiHandle, $requests[$i]);
-            curl_close($requests[$i]);
-            if ($this->verbose && ($errorNum || $httpStatus != 200)) {
-                if ($httpStatus == 0 || $errorNum == 28) { //status:0 == connection lost, curl err 28 == timeout
-                    echo ("connection lost or timed out\n");
-                } else {
-                    $failedRequests++;
-                }
-            } 
-            if (!empty($response)) {
-                $recs[$i] = [
-                    "response" => json_decode($response),
-                    "http_status" => $httpStatus,
-                    "response_header" => $responseHeader
-                ];
-            }
-        }
-
-        curl_multi_close($multiHandle);
-
-        if ($this->verbose) {
-            print_r($recs);
-            print_r("Number of records submitted to the append function: " . count($urls) . "\n");
-            print_r("Number of requests that failed on initial attempt due to 429 or 500 error code: " . $numRetriedUrls . "\n");
-            print_r("Number of requests that were successfully retried: " . ($numRetriedUrls - $failedRequests) . "\n");
-            print_r("Number of requests that failed (on both initial and retry attempt): " . $failedRequests . "\n");
-            if ($recs) {
-                print_r("Number of response records returned: " . count($recs) . "\n");
-            } else {
-                print_r("Number of response records returned: 0");
-            }
-        }
-        return $recs;
-    }
-
-    private function buildRequests(array $urls, &$multiHandle, array &$requests)
-    {
-        $requestLength = count($requests) == 0 ? count($requests) : count($requests) - count($urls); //prevents writing over original requests
-        foreach ($urls as $i => $url) {
-            $requests[$i + $requestLength] = curl_init();
-            $headers = array(
-                "Accept: application/json",
-                "x-versium-api-key: " . $this->apiKey,
-            );
-
-            curl_setopt($requests[$i + $requestLength], CURLOPT_URL, $url);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_HTTPHEADER, $headers);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_CONNECTTIMEOUT, $this->CURLOPT_CONNECTTIMEOUT);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_TIMEOUT, $this->CURLOPT_TIMEOUT);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_HEADER, true);
-            curl_setopt($requests[$i + $requestLength], CURLOPT_FAILONERROR, true);
-
-            curl_multi_add_handle($multiHandle, $requests[$i + $requestLength]);
-        }
+        return $results;
     }
 }
