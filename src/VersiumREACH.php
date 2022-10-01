@@ -7,12 +7,16 @@ class VersiumREACH
     private $apiKey;
     private $logger;
     public $maxRetries = 3;
-    public $CURLOPT_CONNECTTIMEOUT = 5;
-    public $CURLOPT_TIMEOUT = 10;
+    public $connectTimeout = 5;
+    public $timeout = 10;
     public $maxBatchRequestTime = 20;
     public $verbose;
     public $waitTime = 2000000; //microseconds
 
+    /**
+     * @param string $apiKey
+     * @param bool $verbose
+     */
     public function __construct(string $apiKey, bool $verbose = false)
     {
         $this->apiKey = $apiKey;
@@ -58,11 +62,11 @@ class VersiumREACH
 
         if (count($requests) > 0 && $retries < $this->maxRetries) {
             $retries++;
-            $this->log('Retry attempt: ' . $retries);
-            $this->log('Retry requests count: ' . count($requests));
-            $this->log('Sleeping for ' . $this->waitTime);
+            $this->log('handleRequests::Retry attempt: ' . $retries);
+            $this->log('handleRequests::Retry requests count: ' . count($requests));
+            $this->log('handleRequests::Sleeping for ' . $this->waitTime);
             usleep($this->waitTime);
-            $this->log('Sleeping done. Starting retries.');
+            $this->log('handleRequests::Sleeping done. Starting retries.');
             $this->handleRequests($results, $requests, $retries);
         }
     }
@@ -88,8 +92,8 @@ class VersiumREACH
 
             curl_setopt($channels[$i], CURLOPT_URL, $url);
             curl_setopt($channels[$i], CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($channels[$i], CURLOPT_CONNECTTIMEOUT, $this->CURLOPT_CONNECTTIMEOUT);
-            curl_setopt($channels[$i], CURLOPT_TIMEOUT, $this->CURLOPT_TIMEOUT);
+            curl_setopt($channels[$i], CURLOPT_CONNECTTIMEOUT, $this->connectTimeout);
+            curl_setopt($channels[$i], CURLOPT_TIMEOUT, $this->timeout);
             curl_setopt($channels[$i], CURLOPT_HEADER, true);
             curl_setopt($channels[$i], CURLOPT_FAILONERROR, true);
 
@@ -97,6 +101,7 @@ class VersiumREACH
         }
 
         $time1 = microtime(true);
+        $this->log('sendRequests::Sending requests: ' . json_encode($requests));
 
         do {
             $time2 = microtime(true);
@@ -106,22 +111,22 @@ class VersiumREACH
 
         foreach ($requests as $i => $request) {
             $headerSize = curl_getinfo($channels[$i], CURLINFO_HEADER_SIZE);
-            $errorNum = curl_errno($channels[$i]);
-            $httpStatus = curl_getinfo($channels[$i], CURLINFO_HTTP_CODE);
             $data = curl_multi_getcontent($channels[$i]);
-            $responseHeader = substr($data, 0, $headerSize);
             $response = substr($data, $headerSize);
-            curl_multi_remove_handle($multiHandle, $channels[$i]);
-            curl_close($channels[$i]);
 
             $results[$i] = [
-                "errorNum" => $errorNum,
+                "errorNum" => curl_errno($channels[$i]),
+                "httpStatus" => curl_getinfo($channels[$i], CURLINFO_HTTP_CODE),
+                "headers" => substr($data, 0, $headerSize),
                 "bodyRaw" => $response,
                 "body" => json_decode($response),
-                "httpStatus" => $httpStatus,
-                "headers" => $responseHeader
             ];
+
+            curl_multi_remove_handle($multiHandle, $channels[$i]);
+            curl_close($channels[$i]);
         }
+
+        $this->log('sendRequests::results: ' . json_encode($results));
 
         return $results;
     }
@@ -147,7 +152,7 @@ class VersiumREACH
         $baseURL = "https://api.versium.com/v2/" . urlencode($dataTool) . "?";
         
         if (empty($inputData)) {
-            $this->log("No input data was given.");
+            $this->log("append::No input data was given.");
             return [];
         }
 
@@ -164,10 +169,10 @@ class VersiumREACH
             ];
         }
 
-        $this->log("Created the following requests: " . json_encode($requests));
+        $this->log("append::Created the following requests: " . json_encode($requests));
         $this->handleRequests($results, $requests, 0);
-        $this->log("Final results: " . json_encode($results));
-        $this->log("Failed requests: " . json_encode($requests));
+        $this->log("append::Final results: " . json_encode($results));
+        $this->log("append::Failed requests: " . json_encode($requests));
 
         return $results;
     }
