@@ -1,6 +1,6 @@
 {
     "name": "versium/reach",
-    "description": "This class leverages the REACH apis using one simple function where all that is required is the data tool (specifying which api will be used), the input data, the output data, and a valid API Key",
+    "description": "This class leverages the REACH apis using one simple function where all that is required is the data tool (specifying which api will be used), the input data, the output data, and a valid API Key.",
     "license": "MIT",
     "type": "library",
     "require": {
@@ -21,7 +21,7 @@
     },
     "autoload": {
         "psr-4": {
-            "VersiumREACH\\": "src/"
+            "VersiumReach\\": "VersiumReach/"
         }
     }
 }

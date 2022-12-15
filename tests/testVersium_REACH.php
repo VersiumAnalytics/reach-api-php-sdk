@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
-use VersiumREACH\VersiumREACH;
+use VersiumReach\ReachClient;
 /* THIS FILE IS JUST FOR TESTING - MAKE SURE TO DELETE ONCE SDK IS COMPLETE */
 
 class testVersium_REACH {
@@ -17,7 +17,7 @@ class testVersium_REACH {
         $outputTypes = ["address", "phone"];
         $dataTool = "contact";
     
-        $Versium_REACH = new VersiumREACH($apiKey,true);
+        $Versium_REACH = new ReachClient($apiKey,true);
         $Versium_REACH->setLogger(function($msg) {
             echo $msg, "\n\n";
         });

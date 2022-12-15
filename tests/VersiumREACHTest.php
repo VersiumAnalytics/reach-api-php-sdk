@@ -1,9 +1,9 @@
 <?php
 use PHPUnit\Framework\TestCase;
-use VersiumREACH\VersiumREACH;
+use VersiumReach\ReachClient;
 class testVersiumREACH extends TestCase {
 	public function testAppendWithEmptyInput() {
-		$VersiumREACH = new VersiumREACH('');
+		$VersiumREACH = new ReachClient('');
 		$this->assertEquals([], $VersiumREACH->append('', []));
 	}
 }
