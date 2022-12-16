@@ -1,6 +1,8 @@
 <?php
-namespace VersiumReach;
+namespace Versium\Reach;
 
+
+use Generator;
 
 class ReachClient
 {
@@ -8,6 +10,7 @@ class ReachClient
             $logger,
             $startTime;
     public $maxRetries = 3,
+           $version = 2,
            $qps,
            $connectTimeout = 5,
            $timeout = 10,
@@ -19,7 +22,7 @@ class ReachClient
      * @param int $qps
      * @param callable|null $loggingFunction
      */
-    public function __construct(string $apiKey, int $qps = 20, callable $loggingFunction = null)
+    public function __construct(string $apiKey, callable $loggingFunction = null, int $qps = 20)
     {
         $this->apiKey = $apiKey;
         $this->logger = $loggingFunction;
@@ -60,7 +63,6 @@ class ReachClient
             curl_setopt($channels[$i], CURLOPT_CONNECTTIMEOUT, $this->connectTimeout);
             curl_setopt($channels[$i], CURLOPT_TIMEOUT, $this->timeout);
             curl_setopt($channels[$i], CURLOPT_HEADER, true);
-            curl_setopt($channels[$i], CURLOPT_FAILONERROR, true);
 
             curl_multi_add_handle($multiHandle, $channels[$i]);
         }
@@ -109,9 +111,10 @@ class ReachClient
      * @param int $retries
      * @return void
      */
-    private function sendAndRetryRequests(array $results, array &$requests, int $retries): void
+    private function sendAndRetryRequests(array &$results, array &$requests, int $retries): void
     {
-        $results = array_replace($results, $this->sendRequests($requests));
+        $newResults = $this->sendRequests($requests);
+        $results = empty($results) ? $newResults : array_replace($results, $newResults);
 
         foreach ($results as $i => $result) {
             if (!in_array($result['httpStatus'], [429, 500, 0])) {
@@ -137,24 +140,24 @@ class ReachClient
      * This function should be used to effectively query Versium REACH APIs. See our API Documentation for more information
      * https://api-documentation.versium.com/reference/welcome
      *
-     * @param  string $dataTool
+     * @param string $dataTool
      * the current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
-     * @param  array  $inputData
+     * @param array $inputData
      * Each index of the inputData array should contain an array of key value pairs where the keys are the header names and the values are the value of the contact for that specific header
      * ex. $inputData[0] = ["first" => "someFirstName", "last" => "someLastName", "email" => "someEmailAddress"];
-     * @param  array  $outputTypes
+     * @param array $outputTypes
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
-     * @return array
+     * @return Generator
      */
-    public function append(string $dataTool, array $inputData, array $outputTypes = [])
+    public function append(string $dataTool, array $inputData, array $outputTypes = []): Generator
     {
         $requests = [];
         $ctr = 0;
-        $baseURL = "https://api.versium.com/v2/" . urlencode($dataTool) . "?";
-        
+        $baseURL = "https://api.versium.com/v" . $this->version . "/" . urlencode($dataTool) . "?";
+
         if (empty($inputData)) {
             $this->log("append::No input data was given.");
-            return [];
+            yield [];
         }
 
         foreach ($outputTypes as $outputType) {
@@ -192,11 +195,13 @@ class ReachClient
     private function createAndLimitRequests(array $requests): array
     {
         $results = [];
-        $this->log("createRequests::created requests: " . json_encode($requests));
-        $remainingTime = 1100000 - (microtime(true) - $this->startTime);
+        $this->log("createRequests::Created requests: " . json_encode($requests));
+        $remainingTime = 1000000 - ((microtime(true) - $this->startTime) * 1000000);
 
-        if ($remainingTime > 0)
+        if ($remainingTime > 0) {
+            $this->log("createRequests::Sleeping for " . $remainingTime);
             usleep($remainingTime);
+        }
 
         $this->startTime = microtime(true);
         $this->sendAndRetryRequests($results, $requests, 0);

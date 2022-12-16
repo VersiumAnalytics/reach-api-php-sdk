@@ -1,7 +1,7 @@
 {
-    "name": "versium/reach",
-    "description": "This class leverages the REACH apis using one simple function where all that is required is the data tool (specifying which api will be used), the input data, the output data, and a valid API Key.",
-    "license": "MIT",
+    "name": "versium/reach-api-sdk-php",
+    "description": "A PHP client library for accessing the Versium REACH APIs.",
+    "license": "BSD-3",
     "type": "library",
     "require": {
         "php": ">=7.2",
@@ -14,6 +14,12 @@
             "email": "rwatson@versium.com",
             "homepage": "https://www.versium.com",
             "role": "Developer"
+        },
+        {
+            "name": "Bryan Kotjan",
+            "email": "bkotjan@versium.com",
+            "homepage": "https://www.versium.com",
+            "role": "Developer"
         }
     ],
     "require-dev": {
@@ -21,7 +27,12 @@
     },
     "autoload": {
         "psr-4": {
-            "VersiumReach\\": "VersiumReach/"
+            "Versium\\Reach\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Versium\\Reach\\Tests\\": "tests"
         }
     }
 }
