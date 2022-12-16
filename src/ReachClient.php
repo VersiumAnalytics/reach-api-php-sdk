@@ -30,12 +30,12 @@ class ReachClient
         $this->startTime = microtime(true);
     }
 
-    //region Private helper functions
+    //region Protected helper functions
     /**
      * @param string $msg
      * @return void
      */
-    private function log(string $msg) {
+    protected function log(string $msg) {
         if ($this->logger)
             ($this->logger)($msg);
     }
@@ -44,7 +44,7 @@ class ReachClient
      * @param array $requests
      * @return array
      */
-    private function sendRequests(array $requests): array
+    protected function sendRequests(array $requests): array
     {
         $multiHandle = curl_multi_init();
         $results = [];
@@ -111,7 +111,7 @@ class ReachClient
      * @param int $retries
      * @return void
      */
-    private function sendAndRetryRequests(array &$results, array &$requests, int $retries): void
+    protected function sendAndRetryRequests(array &$results, array &$requests, int $retries): void
     {
         $newResults = $this->sendRequests($requests);
         $results = empty($results) ? $newResults : array_replace($results, $newResults);
@@ -141,7 +141,7 @@ class ReachClient
      * https://api-documentation.versium.com/reference/welcome
      *
      * @param string $dataTool
-     * the current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
+     * The current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
      * @param array $inputData
      * Each index of the inputData array should contain an array of key value pairs where the keys are the header names and the values are the value of the contact for that specific header
      * ex. $inputData[0] = ["first" => "someFirstName", "last" => "someLastName", "email" => "someEmailAddress"];
@@ -192,11 +192,11 @@ class ReachClient
      * @param array $requests
      * @return array
      */
-    private function createAndLimitRequests(array $requests): array
+    protected function createAndLimitRequests(array $requests): array
     {
         $results = [];
         $this->log("createRequests::Created requests: " . json_encode($requests));
-        $remainingTime = 1000000 - ((microtime(true) - $this->startTime) * 1000000);
+        $remainingTime = 1100000 - ((microtime(true) - $this->startTime) * 1000000);
 
         if ($remainingTime > 0) {
             $this->log("createRequests::Sleeping for " . $remainingTime);
