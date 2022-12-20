@@ -2,6 +2,7 @@
 namespace Versium\Reach;
 
 
+use Exception;
 use Generator;
 
 class ReachClient
@@ -14,6 +15,7 @@ class ReachClient
            $qps,
            $connectTimeout = 5,
            $timeout = 10,
+           $streamTimeout = 300,
            $maxBatchRequestTime = 20,
            $waitTime = 2000000; //microseconds
 
@@ -30,14 +32,28 @@ class ReachClient
         $this->startTime = microtime(true);
     }
 
-    //region Protected helper functions
+    //region HTTP helper functions
+
     /**
-     * @param string $msg
-     * @return void
+     * @param string $headers
+     * @return array
      */
-    protected function log(string $msg) {
-        if ($this->logger)
-            ($this->logger)($msg);
+    protected function headersToArr(string $headers): array
+    {
+        $headers = array_filter(explode("\r\n", $headers));
+        $headersArr = [];
+
+        //Remove status message
+        array_shift($headers);
+
+        // Create an associative array containing the response headers
+        foreach ($headers as $value) {
+            if (false !== ($matches = explode(':', $value, 2))) {
+                $headersArr["{$matches[0]}"] = trim($matches[1]);
+            }
+        }
+
+        return $headersArr;
     }
 
     /**
@@ -84,17 +100,17 @@ class ReachClient
             $statusCode = curl_getinfo($channels[$i], CURLINFO_HTTP_CODE);
             $curlError = curl_errno($channels[$i]);
 
-            $results[$i] = [
+            $results[$i] = new APIResponse([
                 "requestErrorNum" => $curlError,
                 'requestError' => curl_error($channels[$i]),
                 "httpStatus" => $statusCode,
-                "headers" => substr($data, 0, $headerSize),
+                "headers" => $this->headersToArr(substr($data, 0, $headerSize)),
                 "bodyRaw" => $response,
                 "body" => $body,
                 'matchFound' => !empty($body->versium->num_matches),
                 'success' => $statusCode == 200,
                 'inputs' => $inputs
-            ];
+            ]);
 
             curl_multi_remove_handle($multiHandle, $channels[$i]);
             curl_close($channels[$i]);
@@ -103,6 +119,61 @@ class ReachClient
         $this->log('sendRequests::results: ' . json_encode($results));
 
         return $results;
+    }
+
+    /**
+     * @param string $url
+     * @param array $postData
+     * @param $fileHandle
+     * @return array
+     */
+    protected function sendListGenRequest(string $url, array $postData, $fileHandle): array
+    {
+        $this->log(sprintf("sendListGenRequest::Sending listgen request to URL: %s, Post parameters: %s",
+            $url,
+            json_encode($postData)
+        ));
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_POST => 1,
+            CURLOPT_POSTFIELDS => http_build_query($postData),
+            CURLOPT_FILE => $fileHandle,
+            CURLOPT_TIMEOUT => $this->streamTimeout,
+            CURLOPT_HEADER => 1,
+            CURLOPT_HTTPHEADER => [
+                'x-versium-api-key: ' . $this->apiKey,
+            ]
+        ]);
+        curl_exec($ch);
+
+        return [
+            'requestErrorNum' => curl_errno($ch),
+            'requestError' => curl_error($ch),
+            "httpStatus" => curl_getinfo($ch, CURLINFO_HTTP_CODE),
+            'headerSize' => curl_getinfo($ch, CURLINFO_HEADER_SIZE)
+        ];
+    }
+    //endregion
+
+    //region Protected helper functions
+    /**
+     * @param string $dataTool
+     * @return string
+     */
+    protected function constructAPIURL(string $dataTool): string
+    {
+        return 'https://api.versium.com/v' . $this->version . "/" . urlencode($dataTool) . "?";
+    }
+
+    /**
+     * @param string $msg
+     * @return void
+     */
+    protected function log(string $msg) {
+        if ($this->logger)
+            ($this->logger)($msg);
     }
 
     /**
@@ -117,7 +188,7 @@ class ReachClient
         $results = empty($results) ? $newResults : array_replace($results, $newResults);
 
         foreach ($results as $i => $result) {
-            if (!in_array($result['httpStatus'], [429, 500, 0])) {
+            if (!in_array($result->httpStatus, [429, 500, 0])) {
                 unset($requests[$i]);
             }
         }
@@ -131,6 +202,30 @@ class ReachClient
             $this->log('handleRequests::Sleeping done. Starting retries.');
             $this->sendAndRetryRequests($results, $requests, $retries);
         }
+    }
+
+    /**
+     * @param array $requests
+     * @return array
+     */
+    protected function createAndLimitRequests(array $requests): array
+    {
+        $results = [];
+        $this->log("createRequests::Created requests: " . json_encode($requests));
+        //check if we need to sleep in order to avoid hitting qps rate limit
+        $remainingTime = 1100000 - ((microtime(true) - $this->startTime) * 1000000);
+
+        if ($remainingTime > 0) {
+            $this->log("createRequests::Sleeping for " . $remainingTime);
+            usleep($remainingTime);
+        }
+
+        $this->startTime = microtime(true);
+        $this->sendAndRetryRequests($results, $requests, 0);
+        $this->log("createRequests::Final results: " . json_encode($results));
+        $this->log("createRequests::Failed requests: " . json_encode($requests));
+
+        return $results;
     }
     //endregion
 
@@ -153,7 +248,7 @@ class ReachClient
     {
         $requests = [];
         $ctr = 0;
-        $baseURL = "https://api.versium.com/v" . $this->version . "/" . urlencode($dataTool) . "?";
+        $baseURL = $this->constructAPIURL($dataTool);
 
         if (empty($inputData)) {
             $this->log("append::No input data was given.");
@@ -189,26 +284,53 @@ class ReachClient
     }
 
     /**
-     * @param array $requests
-     * @return array
+     * Function for calling the REACH Listgen API
+     * @param string $dataTool
+     * @param array $filters
+     * @param array $outputTypes
+     * @param string $tempFilePath
+     * @return APIResponse - Returned class contains a function that returns a generator. This function should be used to iterate
+     *                 through the response records. Example:
+     *                 $result = $client->listgen('abm', ['domain' => ['versium.com']], ['abm_email']);
+     *                 foreach (($result->getRecordsFunc)() as $record) {};
+     * @throws Exception
      */
-    protected function createAndLimitRequests(array $requests): array
-    {
-        $results = [];
-        $this->log("createRequests::Created requests: " . json_encode($requests));
-        $remainingTime = 1100000 - ((microtime(true) - $this->startTime) * 1000000);
-
-        if ($remainingTime > 0) {
-            $this->log("createRequests::Sleeping for " . $remainingTime);
-            usleep($remainingTime);
+    public function listgen(string $dataTool, array $filters, array $outputTypes, string $tempFilePath = ''): APIResponse {
+        if ($tempFilePath == '') {
+            $tempFilePath = tempnam(sys_get_temp_dir(), 'reach_listgen_');
         }
 
-        $this->startTime = microtime(true);
-        $this->sendAndRetryRequests($results, $requests, 0);
-        $this->log("createRequests::Final results: " . json_encode($results));
-        $this->log("createRequests::Failed requests: " . json_encode($requests));
+        $fh = fopen($tempFilePath, 'w+');
+        $requestParams = array_merge(['output' => $outputTypes], $filters);
+        $response = array_merge([
+            'inputs' => $filters,
+        ], $this->sendListGenRequest($this->constructAPIURL($dataTool), $requestParams, $fh));
 
-        return $results;
+        //check for requests errors
+        if (!empty($response['requestErrorNum'])) {
+            @fclose($fh);
+        } else {
+            //get headers from file
+            rewind($fh);
+            $response['headers'] = $this->headersToArr(fread($fh, $response['headerSize']));
+
+            //check for server/response errors
+            if ($response['httpStatus'] != 200) {
+                $response['bodyRaw'] = fread($fh, filesize($tempFilePath));
+                $response['body'] = json_decode($response['bodyRaw'], true);
+            } else {
+                $response['success'] = true;
+                $response['getRecordsFunc'] = function() use ($fh): Generator {
+                    while (($json = fgets($fh)) !== false) {
+                        yield json_decode($json, true);
+                    }
+
+                    @fclose($fh);
+                };
+            }
+        }
+
+        return new APIResponse($response);
     }
     //endregion
 }

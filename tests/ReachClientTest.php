@@ -31,7 +31,6 @@ class ReachClientTest extends TestCase {
      */
     public function append_returns_empty_array() {
         $client = new ReachClient('');
-
         $this->assertEquals($this->generate([]), $client->append('', []));
     }
 
@@ -41,10 +40,8 @@ class ReachClientTest extends TestCase {
      */
     public function append_does_not_call_createAndLimitRequests() {
         $client = $this->createPartialMock(ReachClient::class, ['createAndLimitRequests']);
-
         $client->expects($this->exactly(0))
             ->method('createAndLimitRequests');
-
         $client->append('', [])->current();
     }
 
@@ -54,9 +51,21 @@ class ReachClientTest extends TestCase {
      */
     public function calls_createAndLimitRequests() {
         $client = $this->createPartialMock(ReachClient::class, ['createAndLimitRequests']);
-
         $client->expects($this->once())
             ->method('createAndLimitRequests');
         $client->append('', [[]])->current();
+    }
+
+    /**
+     * @test
+     * @group listgen
+     */
+    public function calls_sendListGenRequest() {
+        $client = $this->createPartialMock(ReachClient::class, ['sendListGenRequest']);
+        $client->expects($this->once())
+            ->method('sendListGenRequest')
+            ->willReturn(['requestErrorNum' => 1]);
+
+        $client->listgen('', [], []);
     }
 }
