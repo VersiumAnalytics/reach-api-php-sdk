@@ -285,25 +285,27 @@ class ReachClient
 
     /**
      * Function for calling the REACH Listgen API
+     * See documentation: https://api-documentation.versium.com/reference/account-based-list-abm
      * @param string $dataTool
-     * @param array $filters
+     * @param array $inputs
      * @param array $outputTypes
-     * @param string $tempFilePath
-     * @return APIResponse - Returned class contains a function that returns a generator. This function should be used to iterate
-     *                 through the response records. Example:
-     *                 $result = $client->listgen('abm', ['domain' => ['versium.com']], ['abm_email']);
-     *                 foreach (($result->getRecordsFunc)() as $record) {};
+     * @param string $tempFilePath - This function temporarily write the API results to a file. You can provide a
+     *                               temporary file path; otherwise, it will use the default temp system dir.
+     * @return APIResponse - Returned class contains a function that returns a generator.
+     *                       This function should be used to iterate through the response records. Example:
+     *                       $result = $client->listgen('abm', ['domain' => ['versium.com']], ['abm_email']);
+     *                       foreach (($result->getRecordsFunc)() as $record) {};
      * @throws Exception
      */
-    public function listgen(string $dataTool, array $filters, array $outputTypes, string $tempFilePath = ''): APIResponse {
+    public function listgen(string $dataTool, array $inputs, array $outputTypes, string $tempFilePath = ''): APIResponse {
         if ($tempFilePath == '') {
             $tempFilePath = tempnam(sys_get_temp_dir(), 'reach_listgen_');
         }
 
         $fh = fopen($tempFilePath, 'w+');
-        $requestParams = array_merge(['output' => $outputTypes], $filters);
+        $requestParams = array_merge(['output' => $outputTypes], $inputs);
         $response = array_merge([
-            'inputs' => $filters,
+            'inputs' => $inputs,
         ], $this->sendListGenRequest($this->constructAPIURL($dataTool), $requestParams, $fh));
 
         //check for requests errors
