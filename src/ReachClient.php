@@ -32,8 +32,113 @@ class ReachClient
         $this->startTime = microtime(true);
     }
 
-    //region HTTP helper functions
+    //region public API request functions
+    /**
+     * This function should be used to effectively query Versium REACH APIs. See our API Documentation for more information
+     * https://api-documentation.versium.com/reference/welcome
+     *
+     * @param string $dataTool
+     * The current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
+     * @param array $inputData
+     * Each index of the inputData array should contain an array of key value pairs where the keys are the header names and the values are the value of the contact for that specific header
+     * ex. $inputData[0] = ["first" => "someFirstName", "last" => "someLastName", "email" => "someEmailAddress"];
+     * @param array $outputTypes
+     * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
+     * @return Generator
+     */
+    public function append(string $dataTool, array $inputData, array $outputTypes = []): Generator
+    {
+        $requests = [];
+        $ctr = 0;
+        $baseURL = $this->constructAPIURL($dataTool);
 
+        if (empty($inputData)) {
+            $this->log("append::No input data was given.");
+            yield [];
+        }
+
+        foreach ($outputTypes as $outputType) {
+            $baseURL .= "output[]=" . urlencode($outputType) . "&";
+        }
+
+        foreach ($inputData as $i => $row) {
+            $ctr++;
+            $requests[$i] = [
+                'url' => $baseURL . http_build_query($row),
+                'headers' => [
+                    "Accept: application/json",
+                    "x-versium-api-key: " . $this->apiKey,
+                ],
+                'inputs' => $row
+            ];
+
+            if ($ctr >= $this->qps) {
+                yield $this->createAndLimitRequests($requests);
+
+                $ctr = 0;
+                $requests = [];
+            }
+        }
+
+        if (!empty($requests)) {
+            yield $this->createAndLimitRequests($requests);
+        }
+    }
+
+    /**
+     * Function for calling the REACH Listgen API
+     * See documentation: https://api-documentation.versium.com/reference/account-based-list-abm
+     * @param string $dataTool
+     * @param array $inputs
+     * @param array $outputTypes
+     * @param string $tempFilePath - This function temporarily write the API results to a file. You can provide a
+     *                               temporary file path; otherwise, it will use the default temp system dir.
+     * @return APIResponse - Returned class contains a function that returns a generator.
+     *                       This function should be used to iterate through the response records. Example:
+     *                       $result = $client->listgen('abm', ['domain' => ['versium.com']], ['abm_email']);
+     *                       foreach (($result->getRecordsFunc)() as $record) {};
+     * @throws Exception
+     */
+    public function listgen(string $dataTool, array $inputs, array $outputTypes, string $tempFilePath = ''): APIResponse {
+        if ($tempFilePath == '') {
+            $tempFilePath = tempnam(sys_get_temp_dir(), 'reach_listgen_');
+        }
+
+        $fh = fopen($tempFilePath, 'w+');
+        $requestParams = array_merge(['output' => $outputTypes], $inputs);
+        $response = array_merge([
+            'inputs' => $inputs,
+        ], $this->sendListGenRequest($this->constructAPIURL($dataTool), $requestParams, $fh));
+
+        //check for requests errors
+        if (!empty($response['requestErrorNum'])) {
+            @fclose($fh);
+        } else {
+            //get headers from file
+            rewind($fh);
+            $response['headers'] = $this->headersToArr(fread($fh, $response['headerSize']));
+
+            //check for server/response errors
+            if ($response['httpStatus'] != 200) {
+                $response['bodyRaw'] = fread($fh, filesize($tempFilePath));
+                $response['body'] = json_decode($response['bodyRaw'], true);
+            } else {
+                $response['success'] = true;
+                $response['getRecordsFunc'] = function() use ($fh): Generator {
+                    while (($json = fgets($fh)) !== false) {
+                        yield json_decode($json, true);
+                    }
+
+                    @fclose($fh);
+                };
+            }
+        }
+
+        return new APIResponse($response);
+    }
+    //endregion
+
+    //region HTTP helper functions
     /**
      * @param string $headers
      * @return array
@@ -226,113 +331,6 @@ class ReachClient
         $this->log("createRequests::Failed requests: " . json_encode($requests));
 
         return $results;
-    }
-    //endregion
-
-    //region public API request functions
-
-    /**
-     * This function should be used to effectively query Versium REACH APIs. See our API Documentation for more information
-     * https://api-documentation.versium.com/reference/welcome
-     *
-     * @param string $dataTool
-     * The current options for dataTool are: contact, demographic, b2cOnlineAudience, b2bOnlineAudience, firmographic, c2b, iptodomain
-     * @param array $inputData
-     * Each index of the inputData array should contain an array of key value pairs where the keys are the header names and the values are the value of the contact for that specific header
-     * ex. $inputData[0] = ["first" => "someFirstName", "last" => "someLastName", "email" => "someEmailAddress"];
-     * @param array $outputTypes
-     * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
-     * @return Generator
-     */
-    public function append(string $dataTool, array $inputData, array $outputTypes = []): Generator
-    {
-        $requests = [];
-        $ctr = 0;
-        $baseURL = $this->constructAPIURL($dataTool);
-
-        if (empty($inputData)) {
-            $this->log("append::No input data was given.");
-            yield [];
-        }
-
-        foreach ($outputTypes as $outputType) {
-            $baseURL .= "output[]=" . urlencode($outputType) . "&";
-        }
-
-        foreach ($inputData as $i => $row) {
-            $ctr++;
-            $requests[$i] = [
-                'url' => $baseURL . http_build_query($row),
-                'headers' => [
-                    "Accept: application/json",
-                    "x-versium-api-key: " . $this->apiKey,
-                ],
-                'inputs' => $row
-            ];
-
-            if ($ctr >= $this->qps) {
-                yield $this->createAndLimitRequests($requests);
-
-                $ctr = 0;
-                $requests = [];
-            }
-        }
-
-        if (!empty($requests)) {
-            yield $this->createAndLimitRequests($requests);
-        }
-    }
-
-    /**
-     * Function for calling the REACH Listgen API
-     * See documentation: https://api-documentation.versium.com/reference/account-based-list-abm
-     * @param string $dataTool
-     * @param array $inputs
-     * @param array $outputTypes
-     * @param string $tempFilePath - This function temporarily write the API results to a file. You can provide a
-     *                               temporary file path; otherwise, it will use the default temp system dir.
-     * @return APIResponse - Returned class contains a function that returns a generator.
-     *                       This function should be used to iterate through the response records. Example:
-     *                       $result = $client->listgen('abm', ['domain' => ['versium.com']], ['abm_email']);
-     *                       foreach (($result->getRecordsFunc)() as $record) {};
-     * @throws Exception
-     */
-    public function listgen(string $dataTool, array $inputs, array $outputTypes, string $tempFilePath = ''): APIResponse {
-        if ($tempFilePath == '') {
-            $tempFilePath = tempnam(sys_get_temp_dir(), 'reach_listgen_');
-        }
-
-        $fh = fopen($tempFilePath, 'w+');
-        $requestParams = array_merge(['output' => $outputTypes], $inputs);
-        $response = array_merge([
-            'inputs' => $inputs,
-        ], $this->sendListGenRequest($this->constructAPIURL($dataTool), $requestParams, $fh));
-
-        //check for requests errors
-        if (!empty($response['requestErrorNum'])) {
-            @fclose($fh);
-        } else {
-            //get headers from file
-            rewind($fh);
-            $response['headers'] = $this->headersToArr(fread($fh, $response['headerSize']));
-
-            //check for server/response errors
-            if ($response['httpStatus'] != 200) {
-                $response['bodyRaw'] = fread($fh, filesize($tempFilePath));
-                $response['body'] = json_decode($response['bodyRaw'], true);
-            } else {
-                $response['success'] = true;
-                $response['getRecordsFunc'] = function() use ($fh): Generator {
-                    while (($json = fgets($fh)) !== false) {
-                        yield json_decode($json, true);
-                    }
-
-                    @fclose($fh);
-                };
-            }
-        }
-
-        return new APIResponse($response);
     }
     //endregion
 }
