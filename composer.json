@@ -1,5 +1,5 @@
 {
-    "name": "versium/reach-api-sdk-php",
+    "name": "versium/reach-api-php-sdk",
     "description": "A PHP client library for accessing the Versium REACH APIs.",
     "license": "BSD-3-Clause",
     "type": "library",
