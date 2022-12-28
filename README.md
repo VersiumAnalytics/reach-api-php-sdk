@@ -4,7 +4,7 @@ A simplified PHP interface for accessing the [Versium Reach APIs](https://api-do
 ## Installation
 From the root of your project, use composer to install the SDK from [packagist](https://packagist.org/).
 ```bash
-composer install versium/reach-api-php-sdk
+composer require versium/reach-api-php-sdk
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ foreach ($client->append('contact', $inputs, ['email', 'phone']) as $results) {
     });
     
     //merge successful matches with inputs
-    foreach ($matchedResults as $idx => $result) {
+    foreach ($results as $idx => $result) {
         if ($result->matchFound) {
             $inputs[$idx]['appendResults'] = $result->body->versium->results;
         }        
