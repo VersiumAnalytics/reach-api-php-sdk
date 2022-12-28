@@ -322,7 +322,7 @@ class ReachClient
 
         if ($remainingTime > 0) {
             $this->log("createRequests::Sleeping for " . $remainingTime);
-            usleep($remainingTime);
+            usleep((int)$remainingTime);
         }
 
         $this->startTime = microtime(true);
