@@ -21,6 +21,7 @@ $loggingFunction = function($msg) {
 };
 $client = new ReachClient('you-api-key', $loggingFunction);
 ```
+<small>Note: remember to update the $qps value if Versium customer services increases your rate limit.</small> 
 
 3) For adding data to a set of inputs, use the `append` function. This function returns a `Generator` that yields arrays containing API responses. Check the [API documentation](https://api-documentation.versium.com/docs/the-versium-api-landscape) for which data tools and output types are available.  
 ```php

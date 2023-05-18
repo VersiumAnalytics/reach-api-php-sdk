@@ -10,14 +10,14 @@ class ReachClient
     private $apiKey,
             $logger,
             $startTime;
-    public $maxRetries = 3,
-           $version = 2,
-           $qps,
-           $connectTimeout = 5,
-           $timeout = 10,
-           $streamTimeout = 300,
-           $maxBatchRequestTime = 20,
-           $waitTime = 2000000; //microseconds
+    public $maxRetries = 3,             //how many times to retry a query, if the server returns a 500 or 429
+           $version = 2,                //which version of the API to use
+           $qps,                        //how many queries to make in a single batch request
+           $connectTimeout = 5,         //seconds
+           $timeout = 10,               //seconds
+           $streamTimeout = 300,        //timeout in seconds for a listgen request - should be high
+           $maxBatchRequestTime = 20,   //total number of seconds to allow a single batch of requests to run
+           $waitTime = 2000000;         //how many microseconds to wait before retrying a failed request
 
     /**
      * @param string $apiKey
