@@ -293,7 +293,7 @@ class ReachClient
         $results = empty($results) ? $newResults : array_replace($results, $newResults);
 
         foreach ($results as $i => $result) {
-            if (!in_array($result->httpStatus, [429, 500, 0])) {
+            if (!in_array($result->httpStatus, [429, 500])) {
                 unset($requests[$i]);
             }
         }
