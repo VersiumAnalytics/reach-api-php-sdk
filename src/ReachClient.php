@@ -72,6 +72,10 @@ class ReachClient
                 'inputs' => $row
             ];
 
+            if ($this->timeout > 0) {
+                $requests[$i]['rcfg_max_time'] = max($this->timeout - .2, .1);
+            }
+
             if ($ctr >= $this->qps) {
                 yield $this->createAndLimitRequests($requests);
 
