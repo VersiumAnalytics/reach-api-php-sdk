@@ -286,53 +286,45 @@ class ReachClient
     }
 
     /**
-     * @param array $results
-     * @param array $requests
-     * @param int $retries
-     * @return void
-     */
-    protected function sendAndRetryRequests(array &$results, array &$requests, int $retries): void
-    {
-        $newResults = $this->sendRequests($requests);
-        $results = empty($results) ? $newResults : array_replace($results, $newResults);
-
-        foreach ($results as $i => $result) {
-            if (!in_array($result->httpStatus, [429, 500])) {
-                unset($requests[$i]);
-            }
-        }
-
-        if (count($requests) > 0 && $retries < $this->maxRetries) {
-            $retries++;
-            $this->log('handleRequests::Retry attempt: ' . $retries);
-            $this->log('handleRequests::Retry requests count: ' . count($requests));
-            $this->log('handleRequests::Sleeping for ' . $this->waitTime);
-            usleep($this->waitTime);
-            $this->log('handleRequests::Sleeping done. Starting retries.');
-            $this->sendAndRetryRequests($results, $requests, $retries);
-        }
-    }
-
-    /**
      * @param array $requests
      * @return array
      */
     protected function createAndLimitRequests(array $requests): array
     {
         $results = [];
-        $this->log("createRequests::Created requests: " . json_encode($requests));
+        $retries = 0;
+        $this->log("createAndLimitRequests::Created requests: " . json_encode($requests));
         //check if we need to sleep in order to avoid hitting qps rate limit
         $remainingTime = 1100000 - ((microtime(true) - $this->startTime) * 1000000);
 
         if ($remainingTime > 0) {
-            $this->log("createRequests::Sleeping for " . $remainingTime);
+            $this->log("createAndLimitRequests::Sleeping for " . $remainingTime);
             usleep((int)$remainingTime);
         }
 
-        $this->startTime = microtime(true);
-        $this->sendAndRetryRequests($results, $requests, 0);
-        $this->log("createRequests::Final results: " . json_encode($results));
-        $this->log("createRequests::Failed requests: " . json_encode($requests));
+        while (count($requests) > 0 && $retries <= $this->maxRetries) {
+            if ($retries > 0) {
+                $this->log('createAndLimitRequests::Sleeping for ' . $this->waitTime);
+                usleep($this->waitTime);
+                $this->log('createAndLimitRequests::Sleeping done. Starting retries.');
+            }
+
+            $this->startTime = microtime(true);
+            $results = array_replace($results, $this->sendRequests($requests));
+            $this->log('createAndLimitRequests::try attempt: ' . $retries);
+            $this->log('createAndLimitRequests::try requests count: ' . count($requests));
+
+            foreach ($results as $i => $result) {
+                if (!in_array($result->httpStatus, [429, 500])) {
+                    unset($requests[$i]);
+                    $results[$i] = $result;
+                }
+            }
+            $retries++;
+        }
+
+        $this->log("createAndLimitRequests::Final results: " . json_encode($results));
+        $this->log("createAndLimitRequests::Failed requests: " . json_encode($requests));
 
         return $results;
     }
