@@ -33,6 +33,7 @@ class ReachClient
     }
 
     //region public API request functions
+
     /**
      * This function should be used to effectively query Versium REACH APIs. See our API Documentation for more information
      * https://api-documentation.versium.com/reference/welcome
@@ -44,13 +45,15 @@ class ReachClient
      * ex. $inputData[0] = ["first" => "someFirstName", "last" => "someLastName", "email" => "someEmailAddress"];
      * @param array $outputTypes
      * This array should contain a list of strings where each string is a desired output type. This parameter is optional if the API you are using does not require output types
+     * @param array $config
      * @return Generator
      */
-    public function append(string $dataTool, array $inputData, array $outputTypes = []): Generator
+    public function append(string $dataTool, array $inputData, array $outputTypes = [], array $config = []): Generator
     {
         $requests = [];
         $ctr = 0;
         $baseURL = $this->constructAPIURL($dataTool);
+        $baseParams = [];
 
         if (empty($inputData)) {
             $this->log("append::No input data was given.");
@@ -61,20 +64,24 @@ class ReachClient
             $baseURL .= "output[]=" . urlencode($outputType) . "&";
         }
 
+        if ($this->timeout > 0) {
+            $baseParams['rcfg_max_time'] = max($this->timeout - .2, .1);
+        }
+
+        if (!empty($config)) {
+            $baseParams = array_replace($baseParams, $config);
+        }
+
         foreach ($inputData as $i => $row) {
             $ctr++;
             $requests[$i] = [
-                'url' => $baseURL . http_build_query($row),
+                'url' => $baseURL . http_build_query(array_merge($row, $baseParams)),
                 'headers' => [
                     "Accept: application/json",
                     "x-versium-api-key: " . $this->apiKey,
                 ],
                 'inputs' => $row
             ];
-
-            if ($this->timeout > 0) {
-                $requests[$i]['rcfg_max_time'] = max($this->timeout - .2, .1);
-            }
 
             if ($ctr >= $this->qps) {
                 yield $this->createAndLimitRequests($requests);
